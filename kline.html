@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html style="height: 100%">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+</head>
+<body style="width: 100%; height: 100%; margin:0 auto;">
+<div id="container" style="height: 100%"></div>
+<script type="text/javascript" src="echarts.min.js"></script> 
+<script type="text/javascript" src="jquery-3.6.0.min.js"></script> 
+<script type="text/javascript">
+	function getUri(name) {
+		var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i");
+		var r = window.location.search.substr(1).match(reg);
+		if (r != null) return unescape(r[2]); return 1.000001;
+	}
+	$.ajax({
+		url: 'http://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f3&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&beg=0&end=20500101&ut=fa5fd1943c7b386f172d6893dbfba10b&rtntype=6&secid=' + getUri('code') + '&klt=101&fqt=1&cb=json',
+		type: 'get',
+		datatype: 'json',
+		success:function(res){
+			var json = JSON.parse(res.substring(5, res.length - 2));
+			var rawData = new Array();
+			for(var i = 0; i < json.data.klines.length; i++){
+				var kline = json.data.klines[i].split(",");
+				var ks = new Array();
+				for(var k = 0; k < kline.length; k++){
+					ks.push(kline[k]);
+				}
+				//console.log(ks);
+				rawData.push(ks);
+			}
+			//console.log(rawData);
+			document.title = json.data.name + "(" + json.data.code + ")";
+			var dom = document.getElementById("container");
+			var myChart = echarts.init(dom, "dark");
+			var option;
+			
+			function calculateMA(dayCount, data) {
+				var result = [];
+				for (var i = 0, len = data.length; i < len; i++) {
+					if (i < dayCount) {
+						result.push('-');
+						continue;
+					}
+					var sum = 0;
+					for (var j = 0; j < dayCount; j++) {
+						sum += data[i - j][1];
+					}
+					var num = sum / dayCount;
+					result.push(num.toFixed(2));
+				}
+				return result;
+			}
+			function calculateMACD(pass, data) {
+				var result = [];
+				var a = 2 / (12 + 1);
+				var ema12 = [data[0][1]];
+				for (var i = 1, len = data.length; i < len; i++) {
+					ema12.push(a * data[i][1] + (1-a) * ema12[i - 1]);
+				}
+				a = 2 / (26 + 1);
+				var ema26 = [data[0][1]];
+				for (var i = 1, len = data.length; i < len; i++) {
+					ema26.push(a * data[i][1] + (1-a) * ema26[i - 1]);
+				}
+				var dif = [0.00];
+				for (var i = 1, len = data.length; i < len; i++) {
+				    dif.push(parseFloat(ema12[i] - ema26[i]).toFixed(3));
+				}
+				a = 2 / (9 + 1);
+				var dea = [dif[0]];
+				for (var i = 1, len = dif.length; i < len; i++) {
+				    dea.push(parseFloat(a * dif[i] + (1 - a) * dea[i - 1]).toFixed(3));
+				}
+				var macd = [dif[0]];
+				for (var i = 0, len = data.length; i < len; i++) {
+				    macd.push(parseFloat((dif[i] - dea[i]) * 2).toFixed(3));
+				}
+
+				if (pass == "dif") {
+				    result = dif;
+				} else if (pass == "dea") {
+				    result = dea;
+				} else {
+				    result = macd;
+				}
+
+				return result;
+			}
+			function calculateBoll(pass, data) {
+				var result = [];
+				for (var i = 0, len = data.length; i < len; i++) {
+					if (i < 20) {
+						result.push('-');
+						continue;
+					}
+					var ma = 0;
+					var total = 0;
+					for (var j = 0; j < 20; j++) {
+						ma += data[i - j][1];
+					}
+					var ma = ma / 20;
+					for (var t = 0; t < 20; t++) {
+						total += (data[i - t][1] - ma) * (data[i - t][1] - ma);
+					}
+					var sd = Math.sqrt(total / 20);
+					var up = ma + 2 * sd;
+                    var down = ma - 2 * sd;
+					if(pass == "up") {
+						result.push(up.toFixed(2));
+					} else {
+						result.push(down.toFixed(2));
+					}
+				}
+				return result;
+			}
+			var dates = rawData.map(function (item) {
+				return item[0];
+			});
+			var data = rawData.map(function (item) {
+				return [+item[1], +item[2], +item[4], +item[3], +item[8], +item[10]];
+			});
+			var option = {
+				legend: {
+					data: ['', 'MA 5 ', 'MA10', 'MA20', 'MA30', '上轨', '下轨'],
+					inactiveColor: '#777',
+					selected: {
+						'MA 5 ' : false,
+						'MA10' : false,
+						'MA30' : false
+					}
+				},
+				title:{
+					text: json.data.name,
+					subtext: json.data.code,
+					left: '12%',
+					textAlign: 'center',
+					padding: 10
+				},
+				tooltip: {
+					trigger: 'axis',
+					formatter: function (params) {
+						var res = "<div><p>"  + params[0].name + "</p></div>";
+						for (var i = 0; i < params.length; i++) {
+							if (params[i].data != undefined) {
+								if(i == 0) {
+									res += "<div style='height: 25px; width: 50%; float: left;'>" + params[i].marker  + "开盘: " + params[i].data[1].toFixed(2) + "</div>";
+									res += "<div style='height: 25px; width: 50%;'>" + params[i].marker  + "收盘: " + params[i].data[2].toFixed(2) + "</div>";
+									res += "<div style='height: 25px; width: 50%; float: left;'>" + params[i].marker  + "最低: " + params[i].data[3].toFixed(2) + "</div>";
+									res += "<div style='height: 25px; width: 50%;'>" + params[i].marker  + "最高: " + params[i].data[4].toFixed(2) + "</div>";
+									res += "<div style='height: 25px; width: 50%; float: left;'>" + params[i].marker  + "换手: " + params[i].data[6].toFixed(2) + "%</div>";
+									res += "<div style='height: 25px; width: 50%;'>" + params[i].marker  + "幅度: " + params[i].data[5].toFixed(2) + "%</div>";
+								} else {
+								    res += "<div style='height: 25px; width: 50%; float: left;'>" + params[i].marker  + params[i].seriesName + ": " + params[i].data + "</div>";
+								}
+							}
+						}
+						return res;
+					},
+					axisPointer: {
+						animation: false,
+						type: 'cross',
+						lineStyle: {
+							color: '#376df4',
+							width: 2,
+							opacity: 1
+						}
+					}
+				},
+				xAxis: [
+				    {
+				        type: 'category',
+				        data: dates,
+				        axisLine: {
+				            lineStyle: {
+				                color: '#8392A5'
+						    }
+					    }
+					},
+					{
+				        type: 'category',
+				        gridIndex: 1,
+				        data: dates,
+				        axisLine: {
+				            lineStyle: {
+				                color: '#8392A5'
+						    }
+					    }
+					}
+				],
+				yAxis: [
+				    {
+					    scale: true,
+					    axisLine: {
+					    	lineStyle: {
+							    color: '#8392A5'
+						    }
+				    	},
+					    splitLine: {
+						    show: false
+					    }
+				    },
+				    {
+					    scale: true,
+					    gridIndex: 1,
+					    axisLine: {
+					    	lineStyle: {
+							    color: '#8392A5'
+						    }
+				    	},
+					    splitLine: {
+						    show: false
+					    }
+				    }
+				],
+				axisPointer: {
+				    link: {
+				        xAxisIndex: 'all',
+				    }
+				},
+				grid: [
+				    {
+				        height: '65%'
+				    },
+				    {
+				        height: '10%',
+				        top: '80%'
+				    }
+				],
+				dataZoom: [{
+				    type: 'slider',
+					xAxisIndex: [0, 1],
+					start: 100 - (130 / data.length * 100),
+					end: 100,
+					textStyle: {
+						color: '#8392A5'
+					},
+					handleIcon: 'path://M10.7,11.9v-1.3H9.3v1.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4v1.3h1.3v-1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7V23h6.6V24.4z M13.3,19.6H6.7v-1.4h6.6V19.6z',
+					dataBackground: {
+						areaStyle: {
+							color: '#8392A5'
+						},
+						lineStyle: {
+							opacity: 0.8,
+							color: '#8392A5'
+						}
+					},
+					brushSelect: true
+				}],
+				series: [
+					{
+						type: 'candlestick',
+						name: '均线',
+						data: data,
+						itemStyle: {
+							color: '#FD1050',
+							color0: '#0CF49B',
+							borderColor: '#FD1050',
+							borderColor0: '#0CF49B'
+						}
+					},
+					{
+						name: 'MA 5 ',
+						type: 'line',
+						data: calculateMA(5, data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+						name: 'MA10',
+						type: 'line',
+						data: calculateMA(10, data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+						name: 'MA20',
+						type: 'line',
+						data: calculateMA(20, data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+						name: 'MA30',
+						type: 'line',
+						data: calculateMA(30, data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+						name: '上轨',
+						type: 'line',
+						data: calculateBoll("up", data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+						name: '下轨',
+						type: 'line',
+						data: calculateBoll("down", data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1
+						}
+					},
+					{
+                        name: 'MACD',
+                        type: 'bar',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: calculateMACD("macd", data),
+                        itemStyle: {
+                            normal: {
+							    color: function(params) {
+							    	var color;
+								    if (params.data >= 0) {
+									    color = '#F9293E';
+								    } else {
+									    color = '#00aa3b';
+								    }
+								    return color;
+							    }
+						    }
+						},
+                        tooltip: {
+					        trigger: 'none'
+				        }
+                    },
+					{
+						name: 'DIF',
+						type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+						data: calculateMACD("dif", data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1,
+							color: '#FF8000'
+						},
+                        tooltip: {
+					        trigger: 'none'
+				        }
+					},
+					{
+						name: 'DEA',
+						type: 'line',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+						data: calculateMACD("dea", data),
+						smooth: true,
+						showSymbol: false,
+						lineStyle: {
+							width: 1,
+							color: '#0080FF'
+						},
+                        tooltip: {
+					        trigger: 'none'
+				        }
+					}
+				]
+			};
+			if (option && typeof option === 'object') {
+				myChart.setOption(option);
+				window.addEventListener('resize', function(){
+					myChart.resize();
+				})
+			}
+		}
+	})
+</script>
+</body>
+</html>
