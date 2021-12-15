@@ -126,8 +126,8 @@
 					data: ['', 'MA 5 ', 'MA10', 'MA20', 'MA30', '上轨', '下轨'],
 					inactiveColor: '#777',
 					selected: {
-						'MA 5 ' : false,
-						'MA10' : false,
+						'上轨' : false,
+						'下轨' : false,
 						'MA30' : false
 					}
 				},
@@ -230,6 +230,7 @@
 				],
 				dataZoom: [{
 				    type: 'slider',
+				    height: 20,
 					xAxisIndex: [0, 1],
 					start: 100 - (130 / data.length * 100),
 					end: 100,
